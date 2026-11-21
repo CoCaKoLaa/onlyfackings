@@ -4,7 +4,7 @@ Este repositorio mantiene la web estática y añade un Worker de Cloudflare con 
 
 ## Estado actual
 
-- Estamos haciendo todo lo posible y rapidamente para que OF funcione en breve!! porfavor tengan paciencia. 
+- La portada y las tarjetas de creadores siguen siendo una demostración con perfiles ficticios.
 - El registro y la sesión requieren configurar Cloudflare D1 y Cloudflare Email Service y dominio emisor verificado.
 - El primer rol `admin` solo se asigna al correo `ADMIN_EMAIL` cuando completa la verificación de correo.
 - Suscripciones, cobros, pagos a creadores, cargas multimedia, verificación legal de identidad/edad, moderación, soporte y recuperación de contraseña aún no están conectados.

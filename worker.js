@@ -1,3 +1,6 @@
+import { handleAdmin, getAdminSession, isBanned } from './admin-auth.js';
+import { handleCompliance } from './compliance.js';
+
 const encoder = new TextEncoder();
 const SESSION_COOKIE = '__Host-of_session';
 const SESSION_SECONDS = 60 * 60 * 24 * 14;
@@ -17,10 +20,11 @@ async function sha256(value) {
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(value));
   return [...new Uint8Array(digest)].map((v) => v.toString(16).padStart(2, '0')).join('');
 }
+// Cloudflare Workers admite como máximo 100000 iteraciones de PBKDF2.
 async function passwordHash(password, saltHex) {
   const salt = Uint8Array.from(saltHex.match(/.{2}/g), (v) => parseInt(v, 16));
   const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 310000 }, key, 256);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 100000 }, key, 256);
   return [...new Uint8Array(bits)].map((v) => v.toString(16).padStart(2, '0')).join('');
 }
 function cookieValue(request, name) {
@@ -50,12 +54,15 @@ async function sendVerification(env, email, token) {
     subject: 'Confirma tu correo de ONLYFACKINGS',
     text: `Confirma tu correo en las próximas 24 horas abriendo este enlace: ${link}\n\nSi no solicitaste esta cuenta, ignora este mensaje.`
   });
-}async function sessionUser(request, env) {
+}
+async function sessionUser(request, env) {
   const token = cookieValue(request, SESSION_COOKIE);
   if (!token) return null;
   const tokenHash = await sha256(token);
   const row = await env.DB.prepare('SELECT users.id, users.email, users.role FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.token_hash=? AND sessions.expires_at>? AND users.email_verified_at IS NOT NULL').bind(tokenHash, Math.floor(Date.now() / 1000)).first();
-  return row || null;
+  if (!row) return null;
+  if (await isBanned(env, row.id)) return null;
+  return row;
 }
 async function newSession(userId, env) {
   const token = randomToken();
@@ -110,6 +117,7 @@ async function handleApi(request, env, url) {
     const calculated = user ? await passwordHash(password, user.password_salt) : await passwordHash(password, '00112233445566778899aabbccddeeff');
     if (!user || calculated !== user.password_hash) return json({ error: 'Correo o contraseña incorrectos.' }, 401);
     if (!user.email_verified_at) return json({ error: 'Confirma primero el correo desde el enlace que te enviamos.' }, 403);
+    if (await isBanned(env, user.id)) return json({ error: 'Esta cuenta está suspendida. Escribe a onlyfackings@onlyfackings.com si crees que es un error.' }, 403);
     const session = await newSession(user.id, env);
     return json({ user: { email: user.email, role: user.role } }, 200, { 'set-cookie': cookieHeader(session, SESSION_SECONDS) });
   }
@@ -140,7 +148,22 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) {
-      try { return await handleApi(request, env, url); }
+      try {
+        // 1) Login y panel de administración
+        const adminRes = await handleAdmin(request, env);
+        if (adminRes) return adminRes;
+
+        // 2) Cumplimiento (edad, KYC, denuncias). El webhook del proveedor no lleva Origin.
+        if (request.method !== 'GET' && url.pathname !== '/api/compliance/webhook' && !sameOrigin(request)) {
+          return json({ error: 'Solicitud de origen no válido.' }, 403);
+        }
+        const getUser = async (req, e) => (await getAdminSession(req, e)) || (await sessionUser(req, e));
+        const complianceRes = await handleCompliance(request, env, getUser);
+        if (complianceRes) return complianceRes;
+
+        // 3) Resto de la API (registro, login de usuarios, etc.)
+        return await handleApi(request, env, url);
+      }
       catch (error) { console.error('API request failed', error?.message || 'unknown'); return json({ error: 'Error temporal del servicio.' }, 500); }
     }
     return env.ASSETS.fetch(request);
