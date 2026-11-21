@@ -1,0 +1,1 @@
+INSERT OR REPLACE INTO admins (id, email, password_hash, created_at) VALUES ('d941c8cb-db69-456e-85cf-b9fa9cfcf9ff', 'sugarbot8@gmail.com', 'pbkdf2$100000$fvqp8Z/h93lIJpy3S/fzeA==$77yo/QEmeIreXhrsbCEI4YYMARVNlqsiARTnqYr0weA=', '2026-11-21T12:39:00.846Z');
