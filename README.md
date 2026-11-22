@@ -2,7 +2,7 @@
 
 Este repositorio mantiene la web estática y añade un Worker de Cloudflare con registro, verificación por correo, inicio/cierre de sesión y rol de administrador asignado solo al correo configurado después de verificarlo.
 
-## Estado actual
+## Estado actual ............. 85% finished
 
 - La portada y las tarjetas de creadores siguen siendo una demostración con perfiles ficticios.
 - El registro y la sesión requieren configurar Cloudflare D1 y Cloudflare Email Service y dominio emisor verificado.
